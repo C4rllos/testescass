@@ -2,38 +2,137 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Teste Three.js com fundo azul</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AR com Captura de Foto</title>
   <style>
-    body { margin: 0; overflow: hidden; }
-    canvas { display: block; }
+    body { margin: 0; overflow: hidden; background: #000; }
+    #ar-btn {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      padding: 15px;
+      background: #FF0000;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      font-size: 20px;
+      z-index: 1000;
+    }
+    #screenshot {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 100px;
+      border: 2px solid white;
+      display: none;
+      z-index: 1000;
+    }
   </style>
 </head>
 <body>
+  <button id="ar-btn">🔴 LIGAR AR</button>
+  <img id="screenshot" alt="Captura" />
+
   <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
   <script>
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0033cc); // azul escuro
-
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer();
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+    renderer.xr.enabled = true;
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    const geometry = new THREE.BoxGeometry();
-    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // vermelho
-    const cube = new THREE.Mesh(geometry, material);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+    scene.add(camera);
+
+    const cube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 0.1, 0.1),
+      new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+    );
+    cube.position.set(0, 0, -0.5);
     scene.add(cube);
 
-    camera.position.z = 5;
+    // Sprite com emoji 📸
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FF0000';
+    ctx.beginPath();
+    ctx.arc(64, 64, 60, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = '80px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'white';
+    ctx.fillText('📸', 64, 64);
+    const texture = new THREE.CanvasTexture(canvas);
 
-    function animate() {
-      requestAnimationFrame(animate);
-      cube.rotation.x += 0.01;
-      cube.rotation.y += 0.01;
-      renderer.render(scene, camera);
+    const buttonMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.2, 0.2),
+      new THREE.MeshBasicMaterial({ map: texture, transparent: true })
+    );
+    buttonMesh.position.set(0, -0.3, -0.8);
+    camera.add(buttonMesh); // Colado à câmera
+    scene.add(camera);
+
+    const raycaster = new THREE.Raycaster();
+    const touch = new THREE.Vector2();
+
+    let inAR = false;
+
+    function captureScreenshot() {
+      const dataURL = renderer.domElement.toDataURL("image/png");
+      const img = document.getElementById('screenshot');
+      img.src = dataURL;
+      img.style.display = 'block';
+      console.log("📸 Captura realizada");
     }
 
-    animate();
+    // Evento de toque na tela (funciona no modo AR)
+    window.addEventListener('click', (event) => {
+      if (!inAR) return;
+
+      // Raycast da câmera para frente
+      raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+      const intersects = raycaster.intersectObject(buttonMesh);
+
+      if (intersects.length > 0) {
+        console.log("📸 Botão clicado!");
+        captureScreenshot();
+      }
+    });
+
+    document.getElementById('ar-btn').addEventListener('click', async () => {
+      if (!navigator.xr) {
+        alert("Seu navegador não suporta WebXR");
+        return;
+      }
+
+      try {
+        const session = await navigator.xr.requestSession('immersive-ar', {
+          requiredFeatures: ['local-floor']
+        });
+
+        renderer.xr.setSession(session);
+        document.getElementById('ar-btn').style.display = 'none';
+        inAR = true;
+
+        renderer.setAnimationLoop(() => {
+          cube.rotation.y += 0.01;
+          renderer.render(scene, camera);
+        });
+
+      } catch (err) {
+        alert("Erro ao iniciar o AR: " + err.message);
+      }
+    });
+
+    // Responsividade
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
   </script>
 </body>
 </html>
